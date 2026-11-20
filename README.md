@@ -14,9 +14,15 @@ tripwire/
 │   │   ├── __init__.py
 │   │   ├── config.py         # Application configuration & settings
 │   │   ├── main.py           # FastAPI application entry & router binding
+│   │   ├── demo_runner.py    # End-to-end terminal demonstration
+│   │   ├── agent/
+│   │   │   ├── __init__.py
+│   │   │   ├── planner.py    # Deterministic & LLM-assisted action planners
+│   │   │   └── agent_engine.py# Agent lifecycle, state machine & safety loop
 │   │   ├── api/
 │   │   │   ├── __init__.py
 │   │   │   ├── actions.py    # Action execution endpoints
+│   │   │   ├── agent.py      # Agent session orchestration & approval endpoints
 │   │   │   └── evaluations.py# Tripwire evaluation endpoints (/intercept, /trust, /decision)
 │   │   ├── tripwire/
 │   │   │   ├── __init__.py
@@ -31,9 +37,11 @@ tripwire/
 │   │   │   └── actions.py    # Pydantic schemas for actions & results
 │   │   └── services/
 │   │       ├── __init__.py
-│   │       └── executor.py   # Controlled WorkspaceExecutor engine
+│   │       ├── executor.py   # Controlled WorkspaceExecutor engine
+│   │       └── snapshot.py   # Workspace point-in-time snapshot manager
 │   ├── tests/
 │   │   ├── __init__.py
+│   │   ├── test_agent.py     # End-to-end repair & safety gating tests
 │   │   ├── test_executor.py  # Unit tests for actions & security restrictions
 │   │   ├── test_api.py       # API route integration tests
 │   │   ├── test_evidence_checker.py # Evidence checker tests
@@ -157,6 +165,18 @@ Default environment configuration:
    ```
 
 4. Open your browser at [http://localhost:5173](http://localhost:5173).
+
+---
+
+### 4. Running the Complete End-to-End Demo
+
+You can run the full backend agent loop demonstration (both successful repair and dangerous-action blocking) via:
+
+```powershell
+cd c:\projects\tripwire
+$env:PYTHONPATH="c:\projects\tripwire\backend"
+c:\projects\tripwire\backend\venv\Scripts\python.exe -m app.demo_runner
+```
 
 ---
 
