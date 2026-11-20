@@ -2,12 +2,37 @@ from fastapi import APIRouter
 from app.tripwire.evidence_checker import EvidenceChecker, EvidenceCheckRequest, EvidenceCheckResult
 from app.tripwire.reason_checker import ReasonChecker, ReasonCheckRequest, ReasonCheckResult
 from app.tripwire.risk_checker import RiskChecker, RiskCheckRequest, RiskCheckResult
+from app.tripwire.trust_scorer import TrustScorer, TrustScoreRequest, TrustScoreResult
+from app.tripwire.decision_engine import DecisionEngine, DecisionRequest, DecisionResult
+from app.tripwire.interceptor import TripwireInterceptor, InterceptionRequest, InterceptionResult
 
 router = APIRouter(prefix="/api/evaluations", tags=["Tripwire Evaluations"])
 
 evidence_checker = EvidenceChecker()
 reason_checker = ReasonChecker()
 risk_checker = RiskChecker()
+interceptor = TripwireInterceptor()
+
+@router.post("/intercept", response_model=InterceptionResult)
+def intercept_action_endpoint(request: InterceptionRequest) -> InterceptionResult:
+    """Run full Tripwire safety evaluation across Evidence, Reason, Risk, Trust, and Decision pipelines."""
+    return interceptor.intercept(request)
+
+@router.post("/trust", response_model=TrustScoreResult)
+def calculate_trust(request: TrustScoreRequest) -> TrustScoreResult:
+    """Calculate composite trust score: (0.40 * evidence) + (0.35 * reason) + (0.25 * (1 - risk))."""
+    scorer = TrustScorer()
+    return scorer.calculate(
+        evidence_score=request.evidence_score,
+        reason_score=request.reason_score,
+        risk_score=request.risk_score,
+    )
+
+@router.post("/decision", response_model=DecisionResult)
+def make_decision(request: DecisionRequest) -> DecisionResult:
+    """Evaluate decision gating thresholds and safety overrides."""
+    engine = DecisionEngine()
+    return engine.evaluate(request)
 
 @router.post("/evidence", response_model=EvidenceCheckResult)
 def evaluate_evidence(request: EvidenceCheckRequest) -> EvidenceCheckResult:
