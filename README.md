@@ -250,17 +250,66 @@ Regardless of how high the computed `trust_score` is, the following overrides un
 
 ---
 
-## Features (Step 1-4 Foundation)
+## Frontend Dashboard (Step 7: Cybersecurity SaaS Interface)
 
-- **FastAPI Core**: Async REST API with configured CORS origins and standard health check (`GET /api/health`).
-- **Clean Light Dashboard**: Professional enterprise light theme with neutral slate/zinc styling (no generic AI color palettes or gradients).
-- **Navigation Shell**:
-  - **Overview**: Core middleware connectivity and runtime readiness
-  - **Agent Execution**: Execution orchestration view for `demo_workspace/`
-  - **Tripwire Evaluations**: Guardrail policy checks and interception events
-  - **Approvals**: Human-in-the-loop authorization queue
-  - **Execution History**: Audit trail of executed commands
-  - **Snapshots**: Point-in-time filesystem rollback checkpoints
-- **Live Health Status**: Real-time probe connecting frontend to FastAPI backend.
-- **Zero Mock Statistics**: Clean empty states with explicit status indicators instead of fabricated metrics.
+TRIPWIRE includes a complete React + TypeScript dashboard designed specifically for AI agent safety and control.
+
+### Design Principles
+- **Theme**: Dark navy/charcoal cybersecurity theme (`#020617` / `#0f172a` slate palette).
+- **Branding**: `TRIPWIRE` • `AI AGENT SAFETY MONITOR` • `SUPERNOVA`.
+- **Decision Color Mapping**:
+  - `RUN`: Emerald / Green (`#10b981`)
+  - `SNAPSHOT_AND_RUN`: Amber (`#f59e0b`)
+  - `PAUSE`: Rose / Red (`#f43f5e`)
+- **Zero Fake Statistics**: Every chart, table, card, and indicator is bound directly to backend REST endpoints and live Server-Sent Events (SSE).
+
+### Dashboard Views
+1. **Overview**:
+   - Executive telemetry metrics: Total Tasks, Total Actions, Executed Actions, Blocked/Paused Actions, Pending Approvals, Average Trust Score.
+   - Interactive Recharts Trust Score Trajectory chart with threshold reference lines (0.80 `RUN`, 0.50 `SNAPSHOT`).
+   - Recent action stream with sub-score breakdowns and decision badges.
+2. **Agent Execution**:
+   - Agent prompt console with preset workflows (Safe bug fix, dangerous deletion demo, etc.).
+   - Start Agent and Stop Task controls with live execution status badges.
+   - Real-time step-by-step progress trace with rationale, parameters, decision, and sandbox execution outputs.
+   - Inline approval action banners when a step triggers a `PAUSE`.
+3. **Tripwire Evaluations**:
+   - Comprehensive action inspection with search and decision filter (`ALL`, `RUN`, `SNAPSHOT_AND_RUN`, `PAUSE`).
+   - Detailed sub-score breakdowns: Evidence Score (disk/diff verification), Reason Score (goal alignment), and Risk Score (blast radius).
+   - Expandable evidence cards showing Git diffs, test outputs, exit codes, and override logs.
+4. **Approval Center**:
+   - Human-in-the-loop authorization queue showing all paused actions with reasons and risk classifications.
+   - One-click **Approve** and **Reject** buttons directly integrated with `POST /api/actions/{id}/approve` and `/reject`.
+5. **Execution History**:
+   - Chronological audit log of all historical agent actions.
+   - Filter and search by file path, action name, or terminal output.
+   - Complete capture of execution timestamps, exit codes, and output text.
+6. **Snapshots**:
+   - Workspace checkpoint manager listing all point-in-time Git snapshots.
+   - File counts and storage footprints.
+   - Working **Restore Snapshot** button connected to `POST /api/snapshots/{id}/restore`.
+
+---
+
+## Starting the Full Application
+
+### 1. Start the Backend Server
+
+```bash
+cd backend
+venv\Scripts\activate   # Windows
+# source venv/bin/activate # Linux/macOS
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+### 2. Start the Frontend Application
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Visit `http://localhost:5173` (or `http://localhost:5174`) in your browser.
+
 
