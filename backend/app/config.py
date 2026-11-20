@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     command_timeout_seconds: float = 10.0
     max_output_chars: int = 50_000
     max_file_size_bytes: int = 1_000_000
+
+    # Tripwire Evaluator Settings
+    llm_judge_api_key: Optional[str] = None
+    llm_judge_provider: str = "gemini"
+    llm_judge_model: str = "gemini-2.5-flash"
+    llm_judge_timeout: float = 10.0
 
     @property
     def cors_origins_list(self) -> List[str]:

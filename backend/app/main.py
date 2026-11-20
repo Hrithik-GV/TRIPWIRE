@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 from app.config import settings
 from app.api.actions import router as actions_router
+from app.api.evaluations import router as evaluations_router
 
 app = FastAPI(
     title=settings.app_name,
@@ -20,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(actions_router)
+app.include_router(evaluations_router)
 
 @app.get("/api/health")
 def health_check():

@@ -16,7 +16,13 @@ tripwire/
 │   │   ├── main.py           # FastAPI application entry & router binding
 │   │   ├── api/
 │   │   │   ├── __init__.py
-│   │   │   └── actions.py    # Action execution endpoints
+│   │   │   ├── actions.py    # Action execution endpoints
+│   │   │   └── evaluations.py# Tripwire evaluation endpoints
+│   │   ├── tripwire/
+│   │   │   ├── __init__.py
+│   │   │   ├── evidence_checker.py # Ground-truth disk, diff & test verification
+│   │   │   ├── reason_checker.py   # LLM judge & deterministic fallback alignment
+│   │   │   └── risk_checker.py     # Operational risk, blast radius & reversibility
 │   │   ├── schemas/
 │   │   │   ├── __init__.py
 │   │   │   └── actions.py    # Pydantic schemas for actions & results
@@ -26,7 +32,10 @@ tripwire/
 │   ├── tests/
 │   │   ├── __init__.py
 │   │   ├── test_executor.py  # Unit tests for actions & security restrictions
-│   │   └── test_api.py       # API route integration tests
+│   │   ├── test_api.py       # API route integration tests
+│   │   ├── test_evidence_checker.py # Evidence checker tests
+│   │   ├── test_reason_checker.py   # Reason checker tests
+│   │   └── test_risk_checker.py     # Risk checker tests
 │   ├── requirements.txt      # Python dependencies
 │   └── venv/                 # Python virtual environment (ignored)
 ├── frontend/
