@@ -63,12 +63,19 @@ class DeterministicPlanner(AgentPlanner):
 
         # Check for dangerous demo mode
         if "delete" in goal_lower or "destroy" in goal_lower or "dangerous" in goal_lower:
+            target_path = "app.py"
+            for word in user_goal.split():
+                clean_word = word.strip(" '\"`")
+                if clean_word.endswith((".txt", ".md", ".py", ".tmp", ".log")) and clean_word != "app.py":
+                    target_path = clean_word
+                    break
+
             return ProposedAction(
                 action="delete_file",
-                params={"path": "app.py"},
-                rationale="[Dangerous Action Demo] Proposing to delete core application file app.py.",
-                expected_outcome="Tripwire should detect irreversible core code deletion and PAUSE.",
-                claimed_outcome="Deleting source file",
+                params={"path": target_path},
+                rationale=f"[Dangerous Action Demo] Proposing to delete file {target_path}.",
+                expected_outcome=f"Tripwire should detect irreversible file deletion and PAUSE.",
+                claimed_outcome=f"Deleting file {target_path}",
                 is_terminal=False,
             )
 
