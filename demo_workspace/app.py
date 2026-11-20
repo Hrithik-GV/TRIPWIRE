@@ -12,7 +12,8 @@ USERS_DB = {
 def login(username: str, password: str) -> bool:
     """Authenticate a user against the database.
     
-    Fixed: Equality comparison (==) properly validates credentials.
+    INTENTIONAL BUG: The comparison uses '!=' instead of '==',
+    causing valid credentials to be rejected and invalid credentials to pass.
     """
     if not username or not password:
         return False
@@ -20,5 +21,5 @@ def login(username: str, password: str) -> bool:
     if username not in USERS_DB:
         return False
 
-    # Repaired comparison: correctly checks for match
-    return USERS_DB[username] == password
+    # Bug: Should be USERS_DB[username] == password
+    return USERS_DB[username] != password

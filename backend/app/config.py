@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     llm_judge_model: str = "gemini-2.5-flash"
     llm_judge_timeout: float = 10.0
 
+    # Database settings
+    db_path: str = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "tripwire.db")
+    )
+    database_url: str = f"sqlite:///{os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tripwire.db'))}"
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

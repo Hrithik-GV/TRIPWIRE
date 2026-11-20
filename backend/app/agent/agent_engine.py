@@ -12,6 +12,9 @@ from app.services.executor import WorkspaceExecutor
 from app.services.snapshot import SnapshotManager
 from app.schemas.actions import ActionRequest, ActionType, ActionResult
 from app.config import settings
+from app.database import SessionLocal
+from app.services.audit_service import audit_service
+from app.services.event_service import event_service
 
 class TaskState(str, Enum):
     PENDING = "PENDING"
@@ -23,6 +26,7 @@ class TaskState(str, Enum):
 
 class ExecutionStep(BaseModel):
     step_number: int
+    action_id: Optional[str] = None
     proposed_action: ProposedAction
     interception_result: InterceptionResult
     snapshot_id: Optional[str] = None
@@ -42,7 +46,7 @@ class AgentSession(BaseModel):
     summary: Optional[str] = None
 
 class AgentEngine:
-    """Orchestrates the autonomous agent lifecycle under Tripwire safety gates."""
+    """Orchestrates the autonomous agent lifecycle under Tripwire safety gates with SQLite & SSE."""
 
     def __init__(
         self,
@@ -72,14 +76,27 @@ class AgentEngine:
             summary="Task created and pending execution.",
         )
         self._sessions[session_id] = session
+
+        # Persist to SQLite
+        try:
+            with SessionLocal() as db:
+                audit_service.create_task(db, user_goal=user_goal, task_id=session_id)
+        except Exception:
+            pass
+
+        # Publish live event
+        event_service.publish(
+            "task_started",
+            {"task_id": session_id, "user_goal": user_goal},
+            task_id=session_id,
+        )
+
         return session
 
     def get_session(self, session_id: str) -> Optional[AgentSession]:
-        """Retrieve session by ID."""
         return self._sessions.get(session_id)
 
     def list_sessions(self) -> List[AgentSession]:
-        """List all active and completed sessions."""
         return list(self._sessions.values())
 
     def step(self, session_id: str) -> AgentSession:
@@ -96,6 +113,13 @@ class AgentEngine:
 
         session.state = TaskState.RUNNING
         session.updated_at = datetime.now(timezone.utc).isoformat()
+
+        # Update DB state
+        try:
+            with SessionLocal() as db:
+                audit_service.update_task_state(db, session.session_id, "RUNNING")
+        except Exception:
+            pass
 
         # Build context from previous steps
         history_records = []
@@ -118,9 +142,34 @@ class AgentEngine:
             session.state = TaskState.COMPLETED
             session.summary = proposed.rationale if proposed else "Task completed successfully."
             session.updated_at = datetime.now(timezone.utc).isoformat()
+
+            # Persist and emit
+            try:
+                with SessionLocal() as db:
+                    audit_service.update_task_state(db, session.session_id, "COMPLETED", summary=session.summary)
+            except Exception:
+                pass
+            event_service.publish(
+                "task_completed",
+                {"task_id": session.session_id, "summary": session.summary},
+                task_id=session.session_id,
+            )
             return session
 
         session.current_step += 1
+
+        # Emit action_proposed
+        event_service.publish(
+            "action_proposed",
+            {
+                "task_id": session.session_id,
+                "step_number": session.current_step,
+                "action": proposed.action,
+                "params": proposed.params,
+                "rationale": proposed.rationale,
+            },
+            task_id=session.session_id,
+        )
 
         # 2. Extract before_content if modifying a file
         before_content = None
@@ -148,13 +197,83 @@ class AgentEngine:
         eval_result = self.interceptor.intercept(interception_req)
         decision = eval_result.decision.decision
 
+        # Emit granular evaluation events
+        event_service.publish(
+            "evidence_checked",
+            {
+                "task_id": session.session_id,
+                "evidence_score": eval_result.evidence.evidence_score,
+                "verified": eval_result.evidence.verified,
+                "explanation": eval_result.evidence.explanation,
+            },
+            task_id=session.session_id,
+        )
+        event_service.publish(
+            "reason_checked",
+            {
+                "task_id": session.session_id,
+                "reason_score": eval_result.reason.reason_score,
+                "is_relevant": eval_result.reason.is_relevant,
+                "explanation": eval_result.reason.explanation,
+            },
+            task_id=session.session_id,
+        )
+        event_service.publish(
+            "risk_checked",
+            {
+                "task_id": session.session_id,
+                "risk_score": eval_result.risk.risk_score,
+                "risk_level": eval_result.risk.risk_level,
+                "is_reversible": eval_result.risk.is_reversible,
+            },
+            task_id=session.session_id,
+        )
+        event_service.publish(
+            "trust_calculated",
+            {
+                "task_id": session.session_id,
+                "trust_score": eval_result.trust.trust_score,
+                "weights": eval_result.trust.weights,
+            },
+            task_id=session.session_id,
+        )
+        event_service.publish(
+            "decision_generated",
+            {
+                "task_id": session.session_id,
+                "decision": decision.value,
+                "reasons": eval_result.decision.reasons,
+                "overrides": eval_result.decision.overrides_applied,
+            },
+            task_id=session.session_id,
+        )
+
+        # Record action proposal in SQLite
+        action_db_id = None
+        try:
+            with SessionLocal() as db:
+                action_rec = audit_service.record_action_proposal(
+                    db=db,
+                    task_id=session.session_id,
+                    step_number=session.current_step,
+                    action_name=proposed.action,
+                    params=proposed.params,
+                    rationale=proposed.rationale,
+                    expected_outcome=proposed.expected_outcome,
+                    claimed_outcome=proposed.claimed_outcome,
+                    interception=eval_result,
+                )
+                action_db_id = action_rec.id
+        except Exception:
+            pass
+
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # 4. Handle Gating Decisions
         if decision == Decision.PAUSE:
-            # STOP and wait for human approval (DO NOT EXECUTE)
             step_record = ExecutionStep(
                 step_number=session.current_step,
+                action_id=action_db_id,
                 proposed_action=proposed,
                 interception_result=eval_result,
                 snapshot_id=None,
@@ -167,11 +286,28 @@ class AgentEngine:
             session.state = TaskState.WAITING_APPROVAL
             session.summary = f"Action '{proposed.action}' paused by Tripwire for human approval."
             session.updated_at = now_iso
+
+            # Update DB state and emit approval_requested
+            try:
+                with SessionLocal() as db:
+                    audit_service.update_task_state(db, session.session_id, "WAITING_APPROVAL", summary=session.summary)
+            except Exception:
+                pass
+            event_service.publish(
+                "approval_requested",
+                {
+                    "task_id": session.session_id,
+                    "action_id": action_db_id,
+                    "action": proposed.action,
+                    "reasons": eval_result.decision.reasons,
+                    "overrides": eval_result.decision.overrides_applied,
+                },
+                task_id=session.session_id,
+            )
             return session
 
         snapshot_id = None
         if decision == Decision.SNAPSHOT_AND_RUN:
-            # Mandatory snapshot creation prior to execution
             snap = self.snapshot_manager.create_snapshot(
                 description=f"Snapshot before step {session.current_step}: {proposed.action}"
             )
@@ -184,6 +320,7 @@ class AgentEngine:
 
         step_record = ExecutionStep(
             step_number=session.current_step,
+            action_id=action_db_id,
             proposed_action=proposed,
             interception_result=eval_result,
             snapshot_id=snapshot_id,
@@ -193,6 +330,33 @@ class AgentEngine:
         )
         session.steps.append(step_record)
         session.updated_at = now_iso
+
+        # Update action in SQLite
+        try:
+            with SessionLocal() as db:
+                if action_db_id:
+                    audit_service.record_action_execution(
+                        db=db,
+                        action_id=action_db_id,
+                        snapshot_id=snapshot_id,
+                        exec_result=exec_result,
+                    )
+        except Exception:
+            pass
+
+        # Emit action_executed
+        event_service.publish(
+            "action_executed",
+            {
+                "task_id": session.session_id,
+                "action_id": action_db_id,
+                "action": proposed.action,
+                "exit_code": exec_result.exit_code,
+                "success": exec_result.success,
+                "snapshot_id": snapshot_id,
+            },
+            task_id=session.session_id,
+        )
 
         return session
 
@@ -207,6 +371,15 @@ class AgentEngine:
 
         pending_step = session.pending_approval_step
         now_iso = datetime.now(timezone.utc).isoformat()
+        action_db_id = pending_step.action_id
+
+        # Record decision in SQLite
+        try:
+            with SessionLocal() as db:
+                if action_db_id:
+                    audit_service.record_human_approval(db=db, action_id=action_db_id, approved=approved)
+        except Exception:
+            pass
 
         if not approved:
             pending_step.human_approval = False
@@ -214,13 +387,29 @@ class AgentEngine:
             session.summary = f"Action '{pending_step.proposed_action.action}' rejected by human operator. Execution stopped."
             session.pending_approval_step = None
             session.updated_at = now_iso
+
+            try:
+                with SessionLocal() as db:
+                    audit_service.update_task_state(db, session.session_id, "STOPPED", summary=session.summary)
+            except Exception:
+                pass
+
+            event_service.publish(
+                "action_rejected",
+                {
+                    "task_id": session.session_id,
+                    "action_id": action_db_id,
+                    "action": pending_step.proposed_action.action,
+                },
+                task_id=session.session_id,
+            )
             return session
 
-        # Human operator approved the action
+        # Operator approved
         pending_step.human_approval = True
         session.state = TaskState.RUNNING
 
-        # Execute through the controlled executor
+        # Execute through controlled executor
         action_type = ActionType(pending_step.proposed_action.action)
         action_req = ActionRequest(action=action_type, params=pending_step.proposed_action.params)
         exec_result = self.executor.execute(action_req)
@@ -228,6 +417,32 @@ class AgentEngine:
         pending_step.execution_result = exec_result
         session.pending_approval_step = None
         session.updated_at = now_iso
+
+        # Update action in SQLite
+        try:
+            with SessionLocal() as db:
+                if action_db_id:
+                    audit_service.record_action_execution(
+                        db=db,
+                        action_id=action_db_id,
+                        snapshot_id=None,
+                        exec_result=exec_result,
+                    )
+                audit_service.update_task_state(db, session.session_id, "RUNNING")
+        except Exception:
+            pass
+
+        event_service.publish(
+            "action_executed",
+            {
+                "task_id": session.session_id,
+                "action_id": action_db_id,
+                "action": pending_step.proposed_action.action,
+                "exit_code": exec_result.exit_code,
+                "success": exec_result.success,
+            },
+            task_id=session.session_id,
+        )
 
         return session
 
@@ -245,4 +460,3 @@ class AgentEngine:
             count += 1
 
         return session
-

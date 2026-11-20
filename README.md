@@ -180,6 +180,53 @@ c:\projects\tripwire\backend\venv\Scripts\python.exe -m app.demo_runner
 
 ---
 
+## API Endpoints Reference
+
+### Core Tasks & Actions
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/tasks` | Create and start an autonomous agent task (`user_goal`, `auto_run`) |
+| `GET` | `/api/tasks` | List all persisted tasks with status and step counts |
+| `GET` | `/api/tasks/{task_id}` | Retrieve full task details and audited step trace |
+| `POST` | `/api/tasks/{task_id}/stop` | Immediately halt a running or paused task |
+| `GET` | `/api/actions` | Query audited actions (filter by `status`, `task_id`, `limit`) |
+| `GET` | `/api/actions/{action_id}` | Retrieve complete evaluation breakdown for a single action |
+| `POST` | `/api/actions/{action_id}/approve` | Human-in-the-loop: Authorize a PAUSED action to execute |
+| `POST` | `/api/actions/{action_id}/reject` | Human-in-the-loop: Reject a PAUSED action and stop the task |
+
+### Snapshots & Rollbacks
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/snapshots` | List point-in-time filesystem rollback checkpoints |
+| `POST` | `/api/snapshots/{snapshot_id}/restore` | Roll back `demo_workspace` to specified snapshot |
+
+### Real-Time Monitoring & Telemetry
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/stats` | Dynamic statistics aggregated live from SQLite (tasks, actions, trust avg, approvals) |
+| `GET` | `/api/events` | Server-Sent Events (SSE) live event stream |
+| `GET` | `/api/health` | Service health probe and version metadata |
+
+### SSE Streamed Event Types
+
+Clients connecting to `GET /api/events` receive real-time JSON events:
+- `task_started`: Fired when a task is initialized
+- `action_proposed`: Fired when agent plans next operation
+- `evidence_checked`: Ground-truth disk, diff & test check completed
+- `reason_checked`: Task alignment and goal relevance evaluation completed
+- `risk_checked`: Operational risk and reversibility classification completed
+- `trust_calculated`: Weighted composite trust score computed
+- `decision_generated`: Gating decision (`RUN`, `SNAPSHOT_AND_RUN`, `PAUSE`)
+- `approval_requested`: Fired when action is PAUSED for human review
+- `action_executed`: Fired following controlled execution in sandbox
+- `action_rejected`: Fired when human operator rejects an action
+- `task_completed`: Fired when task finishes or is halted
+
+---
+
 ## Trust Scoring & Decision Gating Engine
 
 ### 1. Composite Trust Formula
